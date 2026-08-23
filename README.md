@@ -1,9 +1,19 @@
-# RailBond G06 Annotation Root
+# RailBond
 
-This public repository carries the independent Go annotation tasks for the RailBond G06 bonded cross-border rail operations backend.
+RailBond is a multi-tenant operations backend for bonded cross-border rail freight. It coordinates train capacity, container consignments, customs declarations, warehouse reservations, checkpoint evidence, route assignments, invoices, documents, exceptions, audit events, and retryable outbox delivery.
 
-Each task is isolated under `tasks/<task_key>/red` and `tasks/<task_key>/green`.
+## Runtime
 
-- `green` starts at a parentless G1 commit containing one runtime defect and no task-private test.
-- `red` is a parentless R1 commit containing the same G1 tree plus that task's private test-only patch.
-- Task-private tests and authoring evidence are not part of the model-visible baseline.
+The server uses a real SQLite database, runs migrations on startup, exposes /healthz and /readyz, and accepts configuration through DATABASE_URL and PORT.
+
+## Business flows
+
+1. A tenant registers a corridor and train, reserves capacity, and creates a consignment with customs items.
+2. Customs declarations, warehouse slots, inspections, and checkpoint evidence advance the consignment through a guarded state machine.
+3. Delivery proof creates settlement work; workers deliver outbox messages and recover expired route/customs leases.
+4. Every cross-entity mutation records an audit event and preserves a retryable failure state.
+
+## Checks
+
+Use make test, make race, make vet, and make build.
+

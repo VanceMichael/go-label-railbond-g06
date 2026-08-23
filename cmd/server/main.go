@@ -43,6 +43,7 @@ func main() {
 	api := &httpapi.Server{Store: st, Auth: as, Tenant: ts, Train: tr, Consignment: cs}
 	api.Ready.Store(true)
 	runtime := &worker.Runtime{Store: st}
+	runtime.SetStopHook(func(context.Context) error { api.Ready.Store(false); return nil })
 	runtime.Start(context.Background())
 	defer runtime.Stop(context.Background())
 	port := os.Getenv("PORT")

@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"github.com/VanceMichael/go-base-railbond-g06/internal/domain"
 	"github.com/VanceMichael/go-base-railbond-g06/internal/storage"
@@ -13,6 +14,15 @@ type RebookService struct{ Store *storage.Store }
 func (s RebookService) Rebook(ctx context.Context, u domain.User, consignmentID, carrier, key, requestID string) (string, error) {
 	id := storage.NewID()
 	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+		var stored string
+		lookupErr := tx.QueryRow(ctx, "SELECT response_body FROM idempotency_keys WHERE tenant_id=? AND key=? AND method='POST' AND path='/rebook'", u.TenantID, key).Scan(&stored)
+		if lookupErr == nil {
+			id = stored
+			return nil
+		}
+		if lookupErr != sql.ErrNoRows {
+			return lookupErr
+		}
 		var status string
 		if err := tx.QueryRow(ctx, "SELECT status FROM consignments WHERE tenant_id=? AND id=?", u.TenantID, consignmentID).Scan(&status); err != nil {
 			return err

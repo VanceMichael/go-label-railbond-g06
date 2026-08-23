@@ -38,7 +38,11 @@ func (r *Runtime) recoverExpired(ctx context.Context) {
 	_, _ = r.Store.Exec(ctx, "UPDATE route_assignments SET status='retry',lease_owner=NULL,lease_until=NULL WHERE status='running' AND lease_until<?", time.Now().UTC().Format(time.RFC3339Nano))
 }
 func (r *Runtime) Stop(ctx context.Context) error {
+	var hookErr error
 	r.once.Do(func() {
+		if r.onStop != nil {
+			hookErr = r.onStop(ctx)
+		}
 		if r.cancel != nil {
 			r.cancel()
 		}
@@ -47,6 +51,9 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	go func() { r.wg.Wait(); close(done) }()
 	select {
 	case <-done:
+		if hookErr != nil {
+			return hookErr
+		}
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

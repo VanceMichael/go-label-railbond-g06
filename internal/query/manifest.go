@@ -23,6 +23,10 @@ func (s ManifestQuery) List(ctx context.Context, u domain.User, trainID, status,
 		where += " AND c.status=?"
 		args = append(args, status)
 	}
+	if cursor != "" {
+		where += " AND c.id>?"
+		args = append(args, cursor)
+	}
 	var total int
 	if err := s.Store.QueryRow(ctx, "SELECT COUNT(*) FROM consignments c WHERE "+where, args...).Scan(&total); err != nil {
 		return ManifestPage{}, err
@@ -40,6 +44,9 @@ func (s ManifestQuery) List(ctx context.Context, u domain.User, trainID, status,
 			return ManifestPage{}, err
 		}
 		out.Items = append(out.Items, id)
+	}
+	if len(out.Items) == limit {
+		out.Next = out.Items[len(out.Items)-1]
 	}
 	return out, rows.Err()
 }

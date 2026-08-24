@@ -1,13 +1,19 @@
 package worker
 
+import "errors"
+
 type shutdownOutcome struct {
 	finalizerErr error
 	contextErr   error
 }
 
 func (o shutdownOutcome) Err() error {
-	if o.contextErr != nil {
-		return o.contextErr
+	var errs []error
+	if o.finalizerErr != nil {
+		errs = append(errs, o.finalizerErr)
 	}
-	return nil
+	if o.contextErr != nil {
+		errs = append(errs, o.contextErr)
+	}
+	return errors.Join(errs...)
 }

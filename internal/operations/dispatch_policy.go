@@ -1,6 +1,13 @@
 package operations
 
 func dispatchPlanReady(consignments []string, checks []Check) bool {
-	_ = checks
-	return len(consignments) > 0
+	if len(consignments) == 0 {
+		return false
+	}
+	for _, c := range checks {
+		if !c.Passed {
+			return false
+		}
+	}
+	return true
 }

@@ -23,13 +23,17 @@ func (s Service) Resolve(ctx context.Context, u domain.User, id, replacement, re
 	if status != "open" {
 		return fmt.Errorf("%w: exception state", domain.ErrInvalidState)
 	}
-	if _, err := s.Store.Exec(ctx, "UPDATE exceptions SET status='resolved',replacement_route=?,resolved_at=? WHERE tenant_id=? AND id=? AND status='open'", replacement, time.Now().UTC().Format(time.RFC3339Nano), u.TenantID, id); err != nil {
-		return err
-	}
-	if _, err := s.Store.Exec(ctx, "UPDATE containers SET lease_owner=NULL,lease_token=NULL,lease_until=NULL WHERE tenant_id=? AND id=(SELECT container_id FROM consignments WHERE id=?)", u.TenantID, consignment); err != nil {
-		return err
-	}
 	return s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+		res, err := tx.Exec(ctx, "UPDATE exceptions SET status='resolved',replacement_route=?,resolved_at=? WHERE tenant_id=? AND id=? AND status='open'", replacement, time.Now().UTC().Format(time.RFC3339Nano), u.TenantID, id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return domain.ErrConflict
+		}
+		if _, err := tx.Exec(ctx, "UPDATE containers SET lease_owner=NULL,lease_token=NULL,lease_until=NULL WHERE tenant_id=? AND id=(SELECT container_id FROM consignments WHERE id=?)", u.TenantID, consignment); err != nil {
+			return err
+		}
 		if err := s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "exception.resolved", "exception", id, "success", requestID, replacement); err != nil {
 			return err
 		}

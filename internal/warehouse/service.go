@@ -34,19 +34,19 @@ func (s Service) ReleaseForCustomsRejection(ctx context.Context, u domain.User, 
 			return err
 		}
 	}
-	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+	return s.Store.WithTx(ctx, func(tx *storage.Tx) error {
 		if _, err := tx.Exec(ctx, "UPDATE slot_reservations SET status='released',released_at=? WHERE tenant_id=? AND consignment_id=? AND status='active'", time.Now().UTC().Format(time.RFC3339Nano), u.TenantID, consignmentID); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, "UPDATE warehouse_slots SET status='available',reserved_for=NULL,version=version+1 WHERE tenant_id=? AND reserved_for=?", u.TenantID, consignmentID); err != nil {
 			return err
 		}
-		return nil
+		// Record the audit event inside the same transaction so a failure
+		// rolls back the slot/reservation release atomically. Recording it
+		// after commit would leave the warehouse positions freed while the
+		// caller sees an error, allowing other cargo to claim the slot.
+		return s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "warehouse.released", "consignment", consignmentID, "success", requestID, "customs rejection")
 	})
-	if err != nil {
-		return err
-	}
-	return s.recordCustomsReleaseAuditAfterCommit(u, consignmentID, requestID)
 }
 func (s Service) List(ctx context.Context, u domain.User) ([]string, error) {
 	rows, err := s.Store.Query(ctx, "SELECT code FROM warehouse_slots WHERE tenant_id=? AND status='available' ORDER BY code", u.TenantID)

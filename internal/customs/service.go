@@ -47,12 +47,12 @@ func (s Service) Submit(ctx context.Context, u domain.User, id, requestID string
 		if _, err := tx.Exec(ctx, "UPDATE customs_declarations SET status='submitted',submitted_at=?,version=version+1 WHERE tenant_id=? AND id=? AND status=?", time.Now().UTC().Format(time.RFC3339Nano), u.TenantID, id, domain.DeclarationDraft); err != nil {
 			return err
 		}
+		if err := s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "customs.submitted", "declaration", id, "success", requestID, consignment); err != nil {
+			return err
+		}
 		return s.Store.Enqueue(ctx, tx, u.TenantID, "customs.submitted", id, consignment)
 	})
-	if err != nil {
-		return err
-	}
-	return s.recordSubmitAuditAfterCommit(u, id, requestID, consignment)
+	return err
 }
 func (s Service) Release(ctx context.Context, u domain.User, id, requestID string) error {
 	return s.Store.WithTx(ctx, func(tx *storage.Tx) error {

@@ -22,26 +22,26 @@ func (s Service) Occupancy(ctx context.Context, u domain.User, zone string) (Occ
 	return o, nil
 }
 func (s Service) Move(ctx context.Context, u domain.User, from, to, consignmentID, requestID string) error {
-	var oldStatus, newStatus string
-	if err := s.Store.QueryRow(ctx, "SELECT status FROM warehouse_slots WHERE tenant_id=? AND id=?", u.TenantID, from).Scan(&oldStatus); err != nil {
-		return err
-	}
-	if err := s.Store.QueryRow(ctx, "SELECT status FROM warehouse_slots WHERE tenant_id=? AND id=?", u.TenantID, to).Scan(&newStatus); err != nil {
-		return err
-	}
-	if oldStatus != "reserved" || newStatus != "available" {
-		return fmt.Errorf("%w: warehouse move", domain.ErrConflict)
-	}
-	if _, err := s.Store.Exec(ctx, "UPDATE warehouse_slots SET status='available',reserved_for=NULL,version=version+1 WHERE tenant_id=? AND id=? AND reserved_for=?", u.TenantID, from, consignmentID); err != nil {
-		return err
-	}
-	if _, err := s.Store.Exec(ctx, "UPDATE warehouse_slots SET status='reserved',reserved_for=?,version=version+1 WHERE tenant_id=? AND id=? AND status='available'", consignmentID, u.TenantID, to); err != nil {
-		return err
-	}
-	if _, err := s.Store.Exec(ctx, "UPDATE slot_reservations SET slot_id=? WHERE tenant_id=? AND consignment_id=? AND status='active'", to, u.TenantID, consignmentID); err != nil {
-		return err
-	}
 	return s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+		var oldStatus, newStatus string
+		if err := tx.QueryRow(ctx, "SELECT status FROM warehouse_slots WHERE tenant_id=? AND id=?", u.TenantID, from).Scan(&oldStatus); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, "SELECT status FROM warehouse_slots WHERE tenant_id=? AND id=?", u.TenantID, to).Scan(&newStatus); err != nil {
+			return err
+		}
+		if oldStatus != "reserved" || newStatus != "available" {
+			return fmt.Errorf("%w: warehouse move", domain.ErrConflict)
+		}
+		if _, err := tx.Exec(ctx, "UPDATE warehouse_slots SET status='available',reserved_for=NULL,version=version+1 WHERE tenant_id=? AND id=? AND reserved_for=?", u.TenantID, from, consignmentID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "UPDATE warehouse_slots SET status='reserved',reserved_for=?,version=version+1 WHERE tenant_id=? AND id=? AND status='available'", consignmentID, u.TenantID, to); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "UPDATE slot_reservations SET slot_id=? WHERE tenant_id=? AND consignment_id=? AND status='active'", to, u.TenantID, consignmentID); err != nil {
+			return err
+		}
 		return s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "warehouse.moved", "consignment", consignmentID, "success", requestID, from+"->"+to)
 	})
 }

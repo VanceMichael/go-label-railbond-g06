@@ -14,8 +14,8 @@ func (s BatchService) Release(ctx context.Context, u domain.User, ids []string, 
 		return 0, domain.ErrInvalidState
 	}
 	released := 0
-	for _, id := range ids {
-		err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+		for _, id := range ids {
 			var status string
 			if err := tx.QueryRow(ctx, "SELECT status FROM customs_declarations WHERE tenant_id=? AND id=?", u.TenantID, id).Scan(&status); err != nil {
 				return err
@@ -29,12 +29,17 @@ func (s BatchService) Release(ctx context.Context, u domain.User, ids []string, 
 			if _, err := tx.Exec(ctx, "UPDATE customs_declarations SET status='released',released_at=datetime('now'),version=version+1 WHERE tenant_id=? AND id=? AND status='submitted'", u.TenantID, id); err != nil {
 				return err
 			}
-			return s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "customs.batch_item_released", "declaration", id, "success", requestID, "partial batch")
-		})
-		if err != nil {
-			return released, err
+			if err := s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "customs.batch_item_released", "declaration", id, "success", requestID, "batch release"); err != nil {
+				return err
+			}
+			released++
 		}
-		released++
+		return nil
+	})
+	if err != nil {
+		// Whole batch rolled back: nothing was committed, so report zero
+		// releases rather than the partial in-transaction counter.
+		return 0, err
 	}
 	return released, nil
 }

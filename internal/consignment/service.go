@@ -72,13 +72,14 @@ func (s Service) Create(ctx context.Context, u domain.User, in CreateInput, requ
 		if _, err := tx.Exec(ctx, "UPDATE consignments SET status='booked',version=version+1 WHERE id=? AND status='draft'", id); err != nil {
 			return err
 		}
-		return s.Store.Enqueue(ctx, tx, u.TenantID, "consignment.created", id, in.Reference)
-	})
-	if err == nil {
-		if auditErr := s.recordCreateAuditAfterCommit(u, id, requestID, in.Reference); auditErr != nil {
-			return Record{}, domain.Wrap("create consignment audit", auditErr)
+		if err := s.Store.Enqueue(ctx, tx, u.TenantID, "consignment.created", id, in.Reference); err != nil {
+			return err
 		}
-	}
+		// Record the compliance audit inside the same transaction so that an
+		// audit-service failure rolls back the consignment and its items,
+		// leaving no queryable business record for a failed request.
+		return s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "consignment.created", "consignment", id, "success", requestID, in.Reference)
+	})
 	if err != nil {
 		return Record{}, domain.Wrap("create consignment", err)
 	}

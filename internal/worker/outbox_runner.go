@@ -31,8 +31,8 @@ func (r OutboxRunner) RunOnce(ctx context.Context, tenantID, id string) error {
 		return err
 	}
 	if err := r.Publisher.Publish(ctx, topic, aggregate, payload); err != nil {
-		if persistErr := recordPublishFailure(ctx, r.Store, tenantID, id, r.Owner, err); persistErr != nil {
-			return fmt.Errorf("publish failed: %w; record failure: %v", err, persistErr)
+		if failErr := (&outbox.Service{Store: r.Store}).Fail(ctx, domain.User{TenantID: tenantID}, id, r.Owner, r.Epoch, err.Error()); failErr != nil {
+			return fmt.Errorf("publish failed: %w; release lease: %v", err, failErr)
 		}
 		return err
 	}

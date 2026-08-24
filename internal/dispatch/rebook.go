@@ -13,8 +13,17 @@ type RebookService struct{ Store *storage.Store }
 func (s RebookService) Rebook(ctx context.Context, u domain.User, consignmentID, carrier, key, requestID string) (string, error) {
 	id := storage.NewID()
 	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
-		if err := s.Store.ObserveRebookReplay(ctx, tx, u.TenantID, key); err != nil {
+		storedRoute, replay, err := s.Store.ObserveRebookReplay(ctx, tx, u.TenantID, key)
+		if err != nil {
 			return err
+		}
+		if replay {
+			// A prior request with this idempotency key already completed and
+			// produced a route assignment. Converge onto the first result and do
+			// not create a second assignment, even if the client retried after a
+			// timeout.
+			id = storedRoute
+			return nil
 		}
 		var status string
 		if err := tx.QueryRow(ctx, "SELECT status FROM consignments WHERE tenant_id=? AND id=?", u.TenantID, consignmentID).Scan(&status); err != nil {

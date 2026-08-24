@@ -55,4 +55,29 @@ func TestBatchDispatchRejectsHeldItem(t *testing.T) {
 	}
 }
 
+func TestRebookReplayConvergesToFirstRoute(t *testing.T) {
+	f := testkit.New(t)
+	tr := f.Train(t)
+	id := f.Consignment(t, tr)
+	if _, err := f.Store.Exec(context.Background(), "UPDATE consignments SET status='booked' WHERE id=?", id); err != nil {
+		t.Fatal(err)
+	}
+	s := dispatch.RebookService{Store: f.Store}
+	route1, err := s.Rebook(context.Background(), f.User, id, "Carrier A", "replay-key", "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	route2, err := s.Rebook(context.Background(), f.User, id, "Carrier A", "replay-key", "r2")
+	if err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	if route1 != route2 {
+		t.Fatalf("expected replay to converge onto first route %q, got %q", route1, route2)
+	}
+	var n int
+	if err := f.Store.QueryRow(context.Background(), "SELECT COUNT(*) FROM route_assignments WHERE tenant_id=? AND consignment_id=?", f.TenantID, id).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("expected single assignment, got %d (%v)", n, err)
+	}
+}
+
 var _ = storage.NewID

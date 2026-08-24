@@ -18,9 +18,11 @@ func (s *Store) WithReadTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	if err != nil {
 		return fmt.Errorf("begin read transaction: %w", err)
 	}
-	callbackErr := fn(tx)
-	if callbackErr != nil {
-		return callbackErr
+	if err := fn(tx); err != nil {
+		if rb := tx.Rollback(); rb != nil {
+			return fmt.Errorf("%w; rollback: %v", err, rb)
+		}
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit read transaction: %w", err)

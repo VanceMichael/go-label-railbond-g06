@@ -19,9 +19,7 @@ func (s Service) Close(ctx context.Context, u domain.User, id, requestID string)
 		return CloseReport{}, err
 	}
 	report := CloseReport{ConsignmentID: id, ClosedAt: time.Now().UTC()}
-	persistenceContext := archivePersistenceContext(ctx)
-	err := s.Store.WithTx(persistenceContext, func(tx *storage.Tx) error {
-		ctx = persistenceContext
+	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
 		var status string
 		if err := tx.QueryRow(ctx, "SELECT status FROM consignments WHERE tenant_id=? AND id=?", u.TenantID, id).Scan(&status); err != nil {
 			return err

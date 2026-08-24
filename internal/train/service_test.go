@@ -71,6 +71,27 @@ func TestDepartRejectsCustomsHold(t *testing.T) {
 		t.Fatal("train departed")
 	}
 }
+func TestResizeRejectsShrinkingBelowReserved(t *testing.T) {
+	f := testkit.New(t)
+	s := train.Service{Store: f.Store}
+	id := f.Train(t)
+	if err := s.ReserveCapacity(context.Background(), f.User, id, 5); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Resize(context.Background(), f.Admin(), id, 3); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("want conflict, got %v", err)
+	}
+	row, err := s.Get(context.Background(), f.User, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Capacity != 10 || row.Reserved != 5 {
+		t.Fatalf("capacity/reserved mutated: %d/%d", row.Capacity, row.Reserved)
+	}
+	if rep, err := s.Capacity(context.Background(), f.User, id); err != nil || rep.Available < 0 {
+		t.Fatalf("negative available: %v %#v", err, rep)
+	}
+}
 func TestCancelReleasesSlot(t *testing.T) {
 	f := testkit.New(t)
 	s := train.Service{Store: f.Store}

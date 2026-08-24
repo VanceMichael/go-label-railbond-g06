@@ -38,7 +38,18 @@ func (s *RetryService) Run(ctx context.Context, u domain.User, id string) error 
 	}
 	result, err := s.Broker.Release(ctx, id, key)
 	if err != nil {
-		return unresolvedBrokerFailure(id, err)
+		// The broker may have accepted the release even though the response
+		// was lost (e.g. a timeout mid-flight). Detach from the caller's
+		// context — which may already be expired — and reconcile with the
+		// broker before reporting failure so a released declaration converges.
+		status, rerr := s.Broker.Reconcile(context.Background(), key)
+		if rerr != nil {
+			return unresolvedBrokerFailure(id, err)
+		}
+		if status == "released" {
+			return s.markReleased(context.Background(), u, id)
+		}
+		return fmt.Errorf("%w: broker result %s", domain.ErrInvalidState, status)
 	}
 	if result == "released" {
 		return s.markReleased(ctx, u, id)
@@ -50,22 +61,34 @@ func (s *RetryService) markReleased(ctx context.Context, u domain.User, id strin
 	return err
 }
 
+// FakeBroker models a broker whose Release outcome and Reconcile outcome can
+// diverge. ReleaseErr is non-empty to simulate a response lost mid-flight
+// (e.g. a timeout after the broker accepted the release). ReconcileStatus is
+// returned by Reconcile to reflect the broker's authoritative record.
 type FakeBroker struct {
-	Calls  int
-	Mu     sync.Mutex
-	Accept bool
+	Calls           int
+	Mu              sync.Mutex
+	Accept          bool
+	ReleaseErr      error
+	ReconcileStatus string
 }
 
 func (f *FakeBroker) Release(ctx context.Context, id, key string) (string, error) {
 	f.Mu.Lock()
 	f.Calls++
 	f.Mu.Unlock()
+	if f.ReleaseErr != nil {
+		return "", f.ReleaseErr
+	}
 	if f.Accept {
 		return "released", nil
 	}
 	return "", fmt.Errorf("broker unavailable")
 }
 func (f *FakeBroker) Reconcile(context.Context, string) (string, error) {
+	if f.ReconcileStatus != "" {
+		return f.ReconcileStatus, nil
+	}
 	if f.Accept {
 		return "released", nil
 	}

@@ -20,41 +20,45 @@ func (s Service) Create(ctx context.Context, u domain.User, consignmentID, kind 
 	return id, err
 }
 func (s Service) SealManifest(ctx context.Context, u domain.User, id string, requestID string) (string, error) {
-	var consignment, status string
-	var version int
-	if err := s.Store.QueryRow(ctx, "SELECT consignment_id,status,version FROM documents WHERE tenant_id=? AND id=?", u.TenantID, id).Scan(&consignment, &status, &version); err != nil {
-		return "", err
-	}
-	if status != "draft" {
-		return "", fmt.Errorf("%w: document state", domain.ErrInvalidState)
-	}
-	rows, err := s.Store.Query(ctx, "SELECT sku,quantity,declared_value FROM consignment_items WHERE consignment_id=? ORDER BY id", consignment)
+	var contentHash string
+	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+		var consignment, status string
+		var version int
+		if err := tx.QueryRow(ctx, "SELECT consignment_id,status,version FROM documents WHERE tenant_id=? AND id=?", u.TenantID, id).Scan(&consignment, &status, &version); err != nil {
+			return err
+		}
+		if status != "draft" {
+			return fmt.Errorf("%w: document state", domain.ErrInvalidState)
+		}
+		rows, err := tx.Query(ctx, "SELECT sku,quantity,declared_value FROM consignment_items WHERE consignment_id=? ORDER BY id", consignment)
+		if err != nil {
+			return err
+		}
+		parts := []string{}
+		for rows.Next() {
+			var sku string
+			var quantity, value int
+			if err := rows.Scan(&sku, &quantity, &value); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			parts = append(parts, fmt.Sprintf("%s:%d:%d", sku, quantity, value))
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		sort.Strings(parts)
+		sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
+		contentHash = hex.EncodeToString(sum[:])
+		if err := s.Store.SealDocument(ctx, tx, u.TenantID, id, version, contentHash, time.Now().UTC()); err != nil {
+			return err
+		}
+		return s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "document.sealed", "document", id, "success", requestID, contentHash)
+	})
 	if err != nil {
 		return "", err
 	}
-	parts := []string{}
-	for rows.Next() {
-		var sku string
-		var quantity, value int
-		if err := rows.Scan(&sku, &quantity, &value); err != nil {
-			_ = rows.Close()
-			return "", err
-		}
-		parts = append(parts, fmt.Sprintf("%s:%d:%d", sku, quantity, value))
-	}
-	if err := rows.Close(); err != nil {
-		return "", err
-	}
-	sort.Strings(parts)
-	sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
-	contentHash := hex.EncodeToString(sum[:])
-	if err := s.Store.SealDocument(ctx, u.TenantID, id, version, contentHash, time.Now().UTC()); err != nil {
-		return "", err
-	}
-	err = s.Store.WithTx(ctx, func(tx *storage.Tx) error {
-		return s.Store.RecordAudit(ctx, tx, u.TenantID, u.ID, "document.sealed", "document", id, "success", requestID, contentHash)
-	})
-	return contentHash, err
+	return contentHash, nil
 }
 func (s Service) IsSealed(ctx context.Context, u domain.User, consignmentID string) (bool, error) {
 	var n int

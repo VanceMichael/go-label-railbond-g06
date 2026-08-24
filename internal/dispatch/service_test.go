@@ -25,6 +25,24 @@ func TestContainerLeaseOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestReleaseContainerRejectsStaleOwner(t *testing.T) {
+	f := testkit.New(t)
+	s := dispatch.LeaseService{Store: f.Store}
+	past := time.Now().UTC().Add(-time.Minute)
+	until := time.Now().UTC().Add(time.Minute)
+	if err := s.ClaimContainer(context.Background(), f.User, f.ContainerID, "worker-a", "token-a", past); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ClaimContainer(context.Background(), f.User, f.ContainerID, "worker-b", "token-b", until); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReleaseContainer(context.Background(), f.User, f.ContainerID, "worker-a", "token-a"); !errors.Is(err, domain.ErrLeaseLost) {
+		t.Fatalf("expected ErrLeaseLost, got %v", err)
+	}
+	if err := s.ReleaseContainer(context.Background(), f.User, f.ContainerID, "worker-b", "token-b"); err != nil {
+		t.Fatal(err)
+	}
+}
 func TestRebookCreatesAssignment(t *testing.T) {
 	f := testkit.New(t)
 	tr := f.Train(t)

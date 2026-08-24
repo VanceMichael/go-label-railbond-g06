@@ -16,5 +16,5 @@ func (s LeaseService) RenewContainer(ctx context.Context, u domain.User, id, own
 	return s.Store.RenewContainer(ctx, u.TenantID, id, owner, token, until)
 }
 func (s LeaseService) ReleaseContainer(ctx context.Context, u domain.User, id, owner, token string) error {
-	return s.Store.ReleaseContainerLease(ctx, u.TenantID, id)
+	return s.Store.ReleaseContainerLease(ctx, u.TenantID, id, owner, token)
 }

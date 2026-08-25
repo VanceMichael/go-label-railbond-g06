@@ -16,7 +16,7 @@ type Message struct {
 }
 
 func (s Service) Claim(ctx context.Context, u domain.User, id, owner string, epoch int, until time.Time) error {
-	return s.Store.ClaimOutboxWithoutLeaseGuard(ctx, u.TenantID, id, owner, epoch, until)
+	return s.Store.ClaimOutbox(ctx, u.TenantID, id, owner, epoch, until)
 }
 func (s Service) Acknowledge(ctx context.Context, u domain.User, id, owner string, epoch int) error {
 	return s.Store.AckOutbox(ctx, u.TenantID, id, owner, epoch)

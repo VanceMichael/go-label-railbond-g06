@@ -27,6 +27,27 @@ func TestClaimAckRequiresOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestClaimRejectsActiveLease(t *testing.T) {
+	f := testkit.New(t)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := f.Store.Exec(context.Background(), "INSERT INTO outbox_messages(id,tenant_id,topic,aggregate_id,payload,status,available_at,created_at) VALUES(?,?,?,?,?,?,?,?)", "o2", f.TenantID, "x", "a", "p", "pending", now, now); err != nil {
+		t.Fatal(err)
+	}
+	s := outbox.Service{Store: f.Store}
+	if err := s.Claim(context.Background(), f.User, "o2", "worker-a", 1, time.Now().UTC().Add(time.Minute)); err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if err := s.Claim(context.Background(), f.User, "o2", "worker-b", 2, time.Now().UTC().Add(time.Minute)); !errors.Is(err, domain.ErrLeaseLost) {
+		t.Fatalf("expected lease lost, got %v", err)
+	}
+	var owner string
+	if err := f.Store.QueryRow(context.Background(), "SELECT lease_owner FROM outbox_messages WHERE tenant_id=? AND id=?", f.TenantID, "o2").Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	if owner != "worker-a" {
+		t.Fatalf("lease owner overwritten to %q", owner)
+	}
+}
 func TestListOutbox(t *testing.T) {
 	f := testkit.New(t)
 	s := outbox.Service{Store: f.Store}

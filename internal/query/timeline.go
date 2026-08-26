@@ -11,7 +11,7 @@ type TimelineRepository struct{ Store *storage.Store }
 type TimelineEntry struct{ Kind, Status, Detail string }
 
 func (s TimelineRepository) Load(ctx context.Context, u domain.User, id string) ([]TimelineEntry, error) {
-	query, args := checkpointTimelineScope(id)
+	query, args := checkpointTimelineScope(u.TenantID, id)
 	rows, err := s.Store.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err

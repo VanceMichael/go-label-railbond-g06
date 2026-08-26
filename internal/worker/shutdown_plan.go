@@ -15,4 +15,13 @@ func (p *shutdownPlan) begin(ctx context.Context) {
 	}
 }
 
+// finalize runs the registered resource cleanup callback once the background
+// loop has drained, capturing its error so readiness and lifecycle observers
+// observe the stopped state.
+func (p *shutdownPlan) finalize(ctx context.Context) {
+	if p.finalizer != nil {
+		p.finalizerErr = p.finalizer(ctx)
+	}
+}
+
 func (p shutdownPlan) err() error { return p.finalizerErr }

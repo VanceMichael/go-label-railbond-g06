@@ -47,6 +47,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	go func() { r.wg.Wait(); close(done) }()
 	select {
 	case <-done:
+		plan.finalize(ctx)
 		return plan.err()
 	case <-ctx.Done():
 		return ctx.Err()

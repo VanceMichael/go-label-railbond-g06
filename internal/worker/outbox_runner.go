@@ -31,7 +31,9 @@ func (r OutboxRunner) RunOnce(ctx context.Context, tenantID, id string) error {
 		return err
 	}
 	if err := r.Publisher.Publish(ctx, topic, aggregate, payload); err != nil {
-		_, _ = r.Store.Exec(context.Background(), "UPDATE outbox_messages SET status='pending',lease_owner=NULL,lease_until=NULL,last_error=? WHERE tenant_id=? AND id=? AND lease_owner=?", err.Error(), tenantID, id, r.Owner)
+		if ferr := (&outbox.Service{Store: r.Store}).Fail(context.Background(), domain.User{TenantID: tenantID}, id, r.Owner, r.Epoch, err.Error()); ferr != nil {
+			return fmt.Errorf("publish: %w; fail: %v", err, ferr)
+		}
 		return err
 	}
 	return (&outbox.Service{Store: r.Store}).Acknowledge(ctx, domain.User{TenantID: tenantID}, id, r.Owner, r.Epoch)

@@ -22,7 +22,7 @@ func (s Service) Acknowledge(ctx context.Context, u domain.User, id, owner strin
 	return s.Store.AckOutbox(ctx, u.TenantID, id, owner, epoch)
 }
 func (s Service) Fail(ctx context.Context, u domain.User, id, owner string, epoch int, reason string) error {
-	return s.Store.FailOutbox(ctx, u.TenantID, id, reason, time.Now().UTC().Add(time.Minute))
+	return s.Store.FailOutbox(ctx, u.TenantID, id, owner, epoch, reason, time.Now().UTC().Add(time.Minute))
 }
 func (s Service) List(ctx context.Context, u domain.User) ([]Message, error) {
 	rows, err := s.Store.Query(ctx, "SELECT id,topic,aggregate_id,payload,lease_epoch FROM outbox_messages WHERE tenant_id=? AND status IN ('pending','sending') ORDER BY created_at", u.TenantID)

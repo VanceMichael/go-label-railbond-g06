@@ -64,8 +64,8 @@ func (s *Store) AckOutbox(ctx context.Context, tenantID, id, owner string, epoch
 	return nil
 }
 
-func (s *Store) FailOutbox(ctx context.Context, tenantID, id, reason string, availableAt time.Time) error {
-	res, err := s.DB.ExecContext(ctx, "UPDATE outbox_messages SET status='pending',lease_owner=NULL,lease_until=NULL,last_error=?,available_at=? WHERE tenant_id=? AND id=? AND status='sending'", reason, availableAt.UTC().Format(time.RFC3339Nano), tenantID, id)
+func (s *Store) FailOutbox(ctx context.Context, tenantID, id, owner string, epoch int, reason string, availableAt time.Time) error {
+	res, err := s.DB.ExecContext(ctx, "UPDATE outbox_messages SET status='pending',lease_owner=NULL,lease_until=NULL,last_error=?,available_at=? WHERE tenant_id=? AND id=? AND status='sending' AND lease_owner=? AND lease_epoch=?", reason, availableAt.UTC().Format(time.RFC3339Nano), tenantID, id, owner, epoch)
 	if err != nil {
 		return err
 	}

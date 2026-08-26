@@ -20,6 +20,11 @@ type Hooks struct {
 	BeforeCheckpoint       func(context.Context) error
 	BeforeWarehouseRelease func(context.Context) error
 	BeforeRouteCall        func(context.Context) error
+	// BeforeRouteRecovery runs after the expired-outbox reset and before the
+	// route-assignment reset inside RecoverExpired. Returning an error rolls the
+	// whole recovery batch (outbox reset included) back, preserving the
+	// all-or-nothing guarantee of the operation.
+	BeforeRouteRecovery func(context.Context) error
 }
 
 type Store struct {

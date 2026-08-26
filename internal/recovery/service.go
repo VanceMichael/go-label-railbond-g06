@@ -13,18 +13,26 @@ type Report struct{ OutboxReset, AssignmentsReset, ContainersReleased int }
 
 func (s Service) RecoverExpired(ctx context.Context, now time.Time) (Report, error) {
 	var report Report
-	reset, err := s.Store.ResetExpiredOutbox(ctx, now)
-	if err != nil {
-		return report, err
-	}
-	report.OutboxReset = reset
-	err = s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+	err := s.Store.WithTx(ctx, func(tx *storage.Tx) error {
+		reset, err := s.Store.ResetExpiredOutboxTx(ctx, tx, now)
+		if err != nil {
+			return err
+		}
+		report.OutboxReset = reset
+
+		if s.Store.Hooks.BeforeRouteRecovery != nil {
+			if err := s.Store.Hooks.BeforeRouteRecovery(ctx); err != nil {
+				return err
+			}
+		}
+
 		result, err := tx.Exec(ctx, "UPDATE route_assignments SET status='retry',lease_owner=NULL,lease_until=NULL,last_error='lease expired' WHERE status='running' AND lease_until<?", now.Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
 		changed, _ := result.RowsAffected()
 		report.AssignmentsReset = int(changed)
+
 		result, err = tx.Exec(ctx, "UPDATE containers SET lease_owner=NULL,lease_token=NULL,lease_until=NULL,version=version+1 WHERE lease_until<?", now.Format(time.RFC3339Nano))
 		if err != nil {
 			return err
